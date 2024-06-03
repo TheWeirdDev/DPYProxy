@@ -1,7 +1,10 @@
 import socket
+import random
 
+from dns import *
 import dns
 
+dns_cache = dict()
 
 class DomainResolver:
     """
@@ -30,23 +33,39 @@ class DomainResolver:
         if not domain.is_absolute():
             domain = domain.concatenate(dns.name.root)
 
+        if dns_cache.get(domain):
+            return dns_cache.get(domain)
+
+        get_ips = lambda response: str(random.choice([[item for item in record.items] for record in response.answer if record.rdtype == dns.rdatatype.A][0]))
         query = dns.message.make_query(domain, dns.rdatatype.A)
         query.flags |= dns.flags.AD
         query.find_rrset(query.additional, dns.name.root, 65535,
                          dns.rdatatype.OPT, create=True, force_unique=True)
-        response = dns.query.tls(query, dns_resolver)
+        is_dot_ip = all(map(lambda x: x.isnumeric(), dns_resolver.split('.')))
+        if is_dot_ip:
+            response = dns.query.tls(query, dns_resolver)
+        else:
+            dot_ip = dns_cache.get(dns_resolver)
+            if not dot_ip:
+                dot_resp = dns.query.udp(dns.message.make_query(dns_resolver, dns.rdatatype.A), '8.8.8.8')
+                dot_ip = get_ips(dot_resp)
+                if dot_ip:
+                    dns_cache[dns_resolver] = dot_ip
+            response = dns.query.tls(query, dot_ip, server_hostname=dns_resolver)
 
         if response.rcode() != dns.rcode.NOERROR:
             return None
 
         # filter ipv4 answer
-        ips = []
-        for record in response.answer:
-            if record.rdtype == dns.rdatatype.A:
-                for item in record.items:
-                    ips.append(str(item.address))
-        if len(ips) > 0:
-            return ips[0]
+        ips = get_ips(response)
+#        for record in response.answer:
+#            if record.rdtype == dns.rdatatype.A:
+#                for item in record.items:
+#                    ips.append(str(item.address))
+        #if len(ips) > 0:
+        if ips:
+            dns_cache[domain] = ips
+            return ips
         else:
             # read CNAME hostnames from answer
             for record in response.answer:
