@@ -14,6 +14,8 @@ class DomainResolver:
         """
         Resolves the given domain to an ip address using the system's DNS resolver.
         """
+        if domain.startswith('['):
+            return domain.strip('[]')
         return socket.gethostbyname(domain)
 
     @staticmethod

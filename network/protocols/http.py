@@ -73,7 +73,7 @@ class Http:
 
         if ":" in uri:
             # split host and port
-            uri, port = uri.split(":")
+            uri, port = uri.rsplit(":", 1)
             port = int(port)
         else:
             port = 80
